@@ -11,8 +11,8 @@ from prody.kdtree.kdtree import KDTree
 from scipy.interpolate import interp1d
 import time
 import sys
-#Base = '/mnt/su3ctm/ejimenez/'
-Base  = '/home/esteban/Documents/EAGLE/'
+Base = '/mnt/su3ctm/ejimenez/'
+#Base  = '/home/esteban/Documents/EAGLE/'
 
 
 def distance(r1, r0, Lboxkpc):
@@ -56,8 +56,8 @@ class GalCat:
             phy = 'RECALIBRATED'
         
         self.data = self.get_data() 
-        #self.BasePart = Base + 'L%sN%s/%s/' %(str(Lbox).zfill(4), str(NP).zfill(4), phy)
-        self.BasePart = Base + 'processed_data/'
+        self.BasePart = Base + 'L%sN%s/%s/' %(str(Lbox).zfill(4), str(NP).zfill(4), phy)
+        #self.BasePart = Base + 'processed_data/'
         
         BS  = self.boxsize
         # Inititalize the Trees
@@ -224,8 +224,30 @@ class GalCat:
         fs.create_dataset('/Kinematics/Stars/L_70kpc', data = L) 
         fs.close()
     
-    def add_sigma(self, itype, SF=True, NSF=False, neutral=False):
+    def add_sigma(self, itype, SF=True, All=False, NSF=False, neutral=False, SF_p=False, feedback=False):
         if itype == 0:
+            if All:
+                fs = h5.File(Base + 'Galaxies/0%i_%s_%iMpc_%i_%sgalaxies.hdf5' 
+                             %(self.snap, self.fend, self.Lbox, self.NP, self.pp), 'a')
+                
+                if feedback:
+                    sigmas = self.compute_sigma(itype, SF=False, All=True, feedback=True)
+                    try: fs.create_dataset('Kinematics/Gas/VelDispFeed', data = sigmas)  
+                    except: fs['Kinematics/Gas/VelDispFeed'][...] = sigmas
+                    
+                else:
+                    sigmas = self.compute_sigma(itype, SF=False, All=True)
+                    try: fs.create_dataset('Kinematics/Gas/VelDisp', data = sigmas)  
+                    except: fs['Kinematics/Gas/VelDisp'][...] = sigmas
+                
+            if SF_p:
+                fs = h5.File(Base + 'Galaxies/0%i_%s_%iMpc_%i_%sgalaxies.hdf5' 
+                             %(self.snap, self.fend, self.Lbox, self.NP, self.pp), 'a')
+                
+                sigmas = self.compute_sigma(itype, SF=False, SF_p=True)
+                try: fs.create_dataset('Kinematics/Gas/NSF/VelDisp_p', data = sigmas)  
+                except: fs['Kinematics/Gas/NSF/VelDisp_p'][...] = sigmas
+            
             if SF: 
                 fs = h5.File(Base + 'Galaxies/0%i_%s_%iMpc_%i_%sgalaxies.hdf5' 
                              %(self.snap, self.fend, self.Lbox, self.NP, self.pp), 'a')
@@ -788,7 +810,7 @@ class GalCat:
         except: fs['StarData/r90'][...] = r90
         fs.close()
     
-    def compute_sigma(self, itype, NumP=4, SF=True, NSF=False, neutral=False):
+    def compute_sigma(self, itype, NumP=4, SF=True, All=False, NSF=False, neutral=False, SF_p=False, feedback=False):
         # should be in a separate function # Fix this function. 
         BSkpc        = self.Lboxkpc
         Pos_cop      = self.data['Pos_cop']
@@ -796,6 +818,7 @@ class GalCat:
         Vcom         = self.data['Vcom']
         L            = self.data['Lstars']   # [pkpc km/s 1e10 Msun]
         hmr          = self.data['hmr']
+        gns          = self.data['gn']
         sgns         = self.data['sgn']
         LenGal       = len(Pos_cop)
         sigma        = np.zeros((LenGal,30), dtype=np.float32) 
@@ -814,6 +837,10 @@ class GalCat:
             UnitPressure = fh['Constants/UnitPressure'].value
             UnitDensity  = fh['Constants/UnitDensity'].value
             gamma        = fh['Constants/gamma'].value
+            if feedback: 
+                Tmax         = fh['PartData/MaximumTemperature'].value/10**7.5
+                amax         = fh['PartData/AExpMaximumTemperature'].value
+            if SF_p: OnEoS = fh['OnEquationOfState'].value
             
             Density  = Density * self.h**2 * self.a**-3  * UnitDensity
             Entropy  = Entropy * self.h**(2-2*gamma) * UnitPressure * UnitDensity**(-1*gamma)
@@ -827,8 +854,7 @@ class GalCat:
                 
                 fneutral = fs['fneutral'].value
                 fs.close()
-            
-            
+                
         if itype == 4:
             fh = h5.File(self.BasePart + '0%i_%s_%iMpc_%i_Star.hdf5'
                     %(self.snap, self.fend, self.Lbox, self.NP), 'r')
@@ -841,35 +867,55 @@ class GalCat:
                 
         for i in range(LenGal):
             if itype == 0:
-                self.TreeGas.search(center=COPc[i],radius=0.035*self.h)
+                self.TreeGas.search(center=COPc[i], radius=0.035*self.h)
                 idx = self.TreeGas.getIndices()
                 if idx is None: continue
                 sgns_gal = sgnGas[idx]
                 masksgn = sgns_gal == sgns[i]
                 if len(sgns_gal[masksgn]) == 0: continue
+                SFR_gal = SFR[idx][masksgn]
+                
+                if All:
+                    if i == 0: print "All if"
+                    LenPart = len(SFR_gal)
+                    mask = np.ones(LenPart).astype(bool)
                 
                 if SF: 
-                    SFR_gal = SFR[idx][masksgn]
-                    mask   = SFR_gal > 0
+                    if i == 0: print "SF if"
+                    mask   = SFR_gal > 0.0
                     LenPart = len(SFR_gal[mask])
-                    if LenPart < NumP: continue
+                
                 if NSF:
-                    SFR_gal = SFR[idx][masksgn]
-                    mask   = SFR_gal == 0
+                    mask   = SFR_gal == 0.0
                     LenPart = len(SFR_gal[mask])
-                    if LenPart < NumP: continue
+
                 if neutral:
                     fneutral_gal = fneutral[idx][masksgn]
                     mask   = fneutral_gal > 1.0e-5
                     LenPart = len(fneutral_gal[mask])
-                    if LenPart < NumP: continue
+                
+                if SF_p:
+                    mask = OnEoS[idx][masksgn] < 0.0
+                    LenPart = len(SFR_gal[mask])
                     
+                if feedback:
+                    if self.snap == 28: acut = 0.99
+                    if self.snap == 19: acut = 0.49
+                    if self.snap == 15: acut = 0.321
+                    
+                    mask = mask & (Tmax[idx][masksgn] > 1.0) & (amax[idx][masksgn] > acut)
+                    LenPart = len(np.where(mask)[0])
+                
+                print LenPart
+                if LenPart < NumP: continue    
+            
+            
                 Pressure_gal     = Pressure[idx][masksgn][mask]
                 Density_gal      = Density[idx][masksgn][mask]
                 MassPart_gal = MassPart[idx][masksgn][mask]
                 PosPart_gal  = PosPart[idx][masksgn][mask]
                 VPart_gal    = VPart[idx][masksgn][mask] 
-            
+                    
             if itype == 4:
                 self.TreeStar.search(center=COPc[i],radius=0.035*self.h)
                 idx = self.TreeStar.getIndices()
@@ -886,8 +932,6 @@ class GalCat:
             
             centre = Pos_cop[i]
             vcom   = Vcom[i]
-            
-            # Compute sigma
             r = np.zeros(LenPart, dtype=float)
             for k in range(LenPart): r[k] = distance(PosPart_gal[k], centre, BSkpc) 
             tt = np.argsort(r)
@@ -937,7 +981,7 @@ class GalCat:
                      %(self.snap, self.fend, self.Lbox, self.NP,self.pp), 'r+')
     
         kappa       = fs['Kinematics/kappa'].value[:,:30] * km_per_kpc  # [s^-1]
-        VelDispGas  = fs['Kinematics/Gas/SF/VelDisp'].value # [km/s]
+        VelDispGas  = fs['Kinematics/Gas/VelDisp'].value # [km/s]
         VelDispStar = fs['Kinematics/Stars/VelDisp'].value  # [km/s]
         SigmaGas    = fs['GasData/SigmaGas'].value          # [Msun kpc^-2]
         SigmaStar   = fs['StarData/SigmaStar'].value        # [Msun kpc^-2]
@@ -958,14 +1002,14 @@ class GalCat:
                 if qstar >= qgas: Qnet[i][k] = (W[k]/qstar + qgas**-1)**-1
                 if qgas >= qstar: Qnet[i][k] = (W[k]/qgas + qstar**-1)**-1
             
-        try: fs.create_dataset('Kinematics/Qgas',  data = Qgas)
-        except: fs['Kinematics/Qgas'][...] = Qgas
+        try: fs.create_dataset('Kinematics/QgasAll',  data = Qgas)
+        except: fs['Kinematics/QgasAll'][...] = Qgas
         
         try: fs.create_dataset('Kinematics/Qstar',  data = Qstar)
         except: fs['Kinematics/Qstar'][...] = Qstar
         
-        try: fs.create_dataset('Kinematics/Qnet',  data = Qnet)
-        except: fs['Kinematics/Qnet'][...] = Qnet
+        try: fs.create_dataset('Kinematics/QnetAll',  data = Qnet)
+        except: fs['Kinematics/QnetAll'][...] = Qnet
 
         fs.close()
     
@@ -978,22 +1022,22 @@ if __name__ == '__main__':
     if p == "REC": REF=False
 
     start_time = time.time()
-    ctg = GalCat(snap, NP=NP, Lbox=Lbox,REF=REF, gas=True, stars=True, dm=True)
+    ctg = GalCat(snap, NP=NP, Lbox=Lbox,REF=REF, gas=True)
     print("--- %2s: Tree Loaded ---" % (time.time() - start_time))
     print("--- Adding Prop ---")
-    ctg.add_r()
+    #ctg.add_r()
     #ctg.add_fneutral()
-    ctg.add_HI_H2_masses()
+    #ctg.add_HI_H2_masses()
     #ctg.add_sigma(0)
-    #ctg.add_sigma(0, SF=False, NSF=True)
-    #ctg.add_sigma(0, SF=False, neutral=True)
+    ctg.add_sigma(0, SF=False, All=True, feedback=True)
+    #ctg.add_sigma(0, SF=False, SF_p=True)
     #ctg.add_sigma(4)
     #ctg.add_jstars()
     #ctg.add_Gas_mass()
     #ctg.add_SigmaGas()
     #ctg.add_SigmaSFR()
     #ctg.add_SigmaStar()
-    ctg.add_Vcirc()
+    #ctg.add_Vcirc()
     #ctg.add_ToomreParam()
     print("--- %2s: Done ---" % (time.time() - start_time))
 
