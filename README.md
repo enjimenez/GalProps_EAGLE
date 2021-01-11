@@ -1,1 +1,1 @@
-Python scripts to compute kinematics from the EAGLE database. 
+Python scripts to compute kinematics for EAGLE galaxies
