@@ -1,1 +1,1 @@
-Python codes to read the EAGLE database. 
+Python scripts to compute kinematics from the EAGLE database. 
