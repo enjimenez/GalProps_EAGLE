@@ -1,8 +1,8 @@
-#Script adapted from Aditya Manuwal's read_EAGLE
-import h5py  as h5
-import numpy as np
-import os
+#script recieved from Aditya Manuwal (UWA)
 
+import h5py  as h5
+import os
+import numpy as np
 
 def ReadEagleSubfind_halo(Base,DirList,fend,exts):
    fn            = Base+DirList+'/groups_'+exts+fend+'/'+'eagle_subfind_tab_'+exts+fend+'.0.hdf5'
@@ -53,16 +53,16 @@ def ReadEagleSubfind_halo(Base,DirList,fend,exts):
          fs            = h5.File(fn,"r")      
          Header        = fs['Header'].attrs
          HubbleParam   = Header['HubbleParam']
-         PartMassDM    = Header['PartMassDM']
+         #PartMassDM    = Header['PartMassDM']
          Redshift      = Header['Redshift']
          Om            = [Header['Omega0'],Header['OmegaLambda'],Header['OmegaBaryon']]
          Ngroups       = Header['Ngroups']
          BoxSize       = Header['BoxSize']
          Time          = Header['Time']
          
-         TotNgroups    = Header['TotNgroups']
+         #TotNgroups    = Header['TotNgroups']
          Nsubgroups    = Header['Nsubgroups']
-         TotNsubgroups = Header['TotNsubgroups']
+         #TotNsubgroups = Header['TotNsubgroups']
          HubbleH       = Header['H(z)']
          
 
@@ -113,5 +113,5 @@ def ReadEagleSubfind_halo(Base,DirList,fend,exts):
               'SFR_5kpc': SFR_5kpc
               }
    else:
-      return {'Omega':Om,  'BoxSize':BoxSize, 'Redshift':Redshift, 'HubbleParam':HubbleParam}
+      return {'Omega':Om,  'BoxSize':BoxSize, 'Redshift':Redshift, 'HubbleParam':HubbleParam}# 'PartMassDM':PartMassDM}
    
